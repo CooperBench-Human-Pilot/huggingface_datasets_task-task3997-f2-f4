@@ -1245,13 +1245,16 @@ class Features(dict):
         super().__delitem__(column_name)
         del self._column_requires_decoding[column_name]
 
-    def update(self, iterable, **kwds):
-        if hasattr(iterable, "keys"):
-            for key in iterable.keys():
-                self[key] = iterable[key]
-        else:
-            for key, value in iterable:
-                self[key] = value
+    def update(self, *args, **kwds):
+        for iterable in args:
+            if isinstance(iterable, str):
+                iterable = generate_from_dict(json.loads(iterable))
+            if hasattr(iterable, "keys"):
+                for key in iterable.keys():
+                    self[key] = iterable[key]
+            else:
+                for key, value in iterable:
+                    self[key] = value
         for key in kwds:
             self[key] = kwds[key]
 
