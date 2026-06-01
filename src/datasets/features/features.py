@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from dataclasses import InitVar, _asdict_inner, dataclass, field, fields
 from functools import reduce
 from operator import mul
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, Callable, ClassVar, Dict, List, Optional
 from typing import Sequence as Sequence_
 from typing import Tuple, Union
 
@@ -1178,23 +1178,38 @@ def list_of_np_array_to_pyarrow_listarray(l_arr: List[np.ndarray], type: pa.Data
         return pa.array([], type=type)
 
 
-def require_decoding(feature: FeatureType, ignore_decode_attribute: bool = False) -> bool:
+def require_decoding(
+    feature: FeatureType,
+    ignore_decode_attribute: bool = False,
+    custom_criteria: Optional[Callable[[FeatureType], Optional[bool]]] = None,
+) -> bool:
     """Check if a (possibly nested) feature requires decoding.
 
     Args:
         feature (FeatureType): the feature type to be checked
         ignore_decode_attribute (:obj:`bool`, default ``False``): Whether to ignore the current value
             of the `decode` attribute of the decodable feature types.
+        custom_criteria (:obj:`Callable[[FeatureType], Optional[bool]]`, *optional*): A user-defined
+            callable that decides whether a feature requires decoding based on its metadata or
+            feature-specific properties. It is called for every (possibly nested) feature. Returning
+            ``True`` or ``False`` overrides the default decision for that feature; returning ``None``
+            defers to the default rules. The callable is not applied to ``dict``, ``list``, ``tuple``
+            or :class:`Sequence` containers themselves, which are always traversed recursively so the
+            criteria can be evaluated on their inner features.
     Returns:
         :obj:`bool`
     """
     if isinstance(feature, dict):
-        return any(require_decoding(f) for f in feature.values())
+        return any(require_decoding(f, ignore_decode_attribute, custom_criteria) for f in feature.values())
     elif isinstance(feature, (list, tuple)):
-        return require_decoding(feature[0])
+        return require_decoding(feature[0], ignore_decode_attribute, custom_criteria)
     elif isinstance(feature, Sequence):
-        return require_decoding(feature.feature)
+        return require_decoding(feature.feature, ignore_decode_attribute, custom_criteria)
     else:
+        if custom_criteria is not None:
+            custom_result = custom_criteria(feature)
+            if custom_result is not None:
+                return custom_result
         return hasattr(feature, "decode_example") and (feature.decode if not ignore_decode_attribute else True)
 
 
